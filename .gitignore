@@ -1,0 +1,8 @@
+# 敏感文件，不要上传到 GitHub
+.env
+*.pyc
+__pycache__/
+
+# 生成的文件（每次运行重新生成）
+research.json
+daily_plan.md
