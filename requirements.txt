@@ -1,4 +1,4 @@
-claude-agent-sdk
+anthropic
 markdown
 python-dotenv
 tzdata

@@ -1,130 +1,139 @@
 #!/usr/bin/env python3
 """
-Step 1 - 研究收集 Agent
-- arxiv.org 最新 AI 论文
-- 各大厂 AI 创新动态
-- SAP 最新 AI 研究和产品专项分析
-- 保存 research.json + 发摘要邮件（邮件主题含特定标记供回复检测）
+Step 1 - 研究收集
+使用 Anthropic SDK + web_search 工具搜索：
+- arxiv 最新 AI 论文
+- 大厂 AI 动态
+- SAP AI 最新研究和产品
+保存为 research.json 并发摘要邮件
 """
 
-import asyncio
 import json
+import os
 from datetime import date
 from pathlib import Path
 
+import anthropic
 from dotenv import load_dotenv
-
-from claude_agent_sdk import ClaudeAgentOptions, query
-from claude_agent_sdk.types import AssistantMessage, TextBlock
 from send_email import send_html_email
 
 load_dotenv()
 
 RESEARCH_FILE = Path("research.json")
-AGENT_OPTIONS = ClaudeAgentOptions(
-    max_turns=30,
-    allowed_tools=["WebSearch", "WebFetch", "Write"],
-)
+client = anthropic.Anthropic()
 
 
-def build_research_prompt(today: str) -> str:
-    return f"""
-今天是 {today}。你是一位 AI 研究分析师，请完成以下任务：
+def search(query: str) -> str:
+    """用 web_search 工具执行一次搜索，返回结果文本"""
+    response = client.messages.create(
+        model="claude-opus-4-8",
+        max_tokens=4096,
+        tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}],
+        messages=[{"role": "user", "content": query}],
+    )
+    # 提取所有文本内容
+    texts = []
+    for block in response.content:
+        if hasattr(block, "text"):
+            texts.append(block.text)
+    return "\n".join(texts)
 
----
 
-## 任务 1：arxiv.org 最新 AI 论文
+def collect_research(today: str) -> dict:
+    """分别搜索三个方向，整合为 research dict"""
+    print("📄  搜索 arxiv 最新 AI 论文…")
+    arxiv_raw = search(
+        f"Search arxiv.org for the most important AI papers published this week in 2025. "
+        f"Focus on LLM, Agent, RAG, multimodal, diffusion models. "
+        f"For each paper give: title, authors, arxiv URL, one-sentence contribution, category."
+    )
 
-访问以下页面获取最新论文列表：
-- https://arxiv.org/list/cs.AI/recent
-- https://arxiv.org/list/cs.LG/recent
-- https://arxiv.org/list/cs.CL/recent
+    print("🏢  搜索大厂 AI 动态…")
+    bigtech_raw = search(
+        f"Search for the latest AI announcements from OpenAI, Google DeepMind, Meta AI, "
+        f"Microsoft AI, and Anthropic in the past 7 days (around {today}). "
+        f"For each company give: company name, announcement title, summary, source URL."
+    )
 
-优先选择涉及 LLM、Agent、RAG、多模态、扩散模型的论文，每个方向各选 2 篇最重要的，记录：
-标题、作者、arxiv 链接、核心贡献（一句话）。
+    print("🔷  搜索 SAP AI 最新动态…")
+    sap_raw = search(
+        f"Search for the latest SAP AI news in 2025: SAP Joule new features, SAP Business AI, "
+        f"SAP AI research papers, SAP AI partnerships. "
+        f"Visit news.sap.com if possible. "
+        f"For each item give: title, type (product/research/partnership), detailed summary, URL, impact on SAP users."
+    )
 
----
+    print("🧠  整合研究结果…")
+    # 让模型把三段原始文本整合成结构化 JSON
+    synthesis = client.messages.create(
+        model="claude-opus-4-8",
+        max_tokens=4096,
+        messages=[{
+            "role": "user",
+            "content": f"""Based on the following research results, create a structured JSON object.
 
-## 任务 2：大厂 AI 创新动态（最近 7 天）
+=== arxiv papers ===
+{arxiv_raw}
 
-搜索以下关键词：
-- "OpenAI new research OR model 2025"
-- "Google DeepMind AI 2025"
-- "Meta AI research 2025"
-- "Microsoft AI research 2025"
-- "Anthropic research 2025"
+=== Big Tech AI news ===
+{bigtech_raw}
 
-每家公司选 1 条最重要动态。
+=== SAP AI news ===
+{sap_raw}
 
----
-
-## 任务 3：SAP AI 专项分析
-
-搜索并访问：
-- https://news.sap.com/tags/artificial-intelligence/
-- "SAP Joule agent 2025"
-- "SAP Business AI new features 2025"
-- "SAP AI research paper 2025"
-
-重点关注：SAP Joule 最新能力、Business AI 新产品、SAP 发表的论文、与 AI 公司的合作。
-
----
-
-## 任务 4：保存 research.json
-
-用 Write 工具将以下 JSON 格式写入 research.json：
-
+Return ONLY valid JSON in this exact format (no markdown, no explanation):
 {{
   "date": "{today}",
   "arxiv_papers": [
     {{
-      "title": "论文标题",
-      "authors": "作者",
-      "url": "https://arxiv.org/abs/xxxx.xxxxx",
-      "contribution": "核心贡献",
+      "title": "paper title",
+      "authors": "author names",
+      "url": "https://arxiv.org/abs/...",
+      "contribution": "one sentence core contribution",
       "category": "LLM/RAG/Agent/Diffusion/Multimodal"
     }}
   ],
   "big_tech": [
     {{
-      "company": "公司名",
-      "title": "动态标题",
-      "summary": "简介",
-      "url": "来源链接"
+      "company": "company name",
+      "title": "news title",
+      "summary": "brief summary",
+      "url": "source URL"
     }}
   ],
   "sap_focus": [
     {{
-      "title": "标题",
+      "title": "title",
       "type": "research/product/partnership",
-      "summary": "详细介绍（3-5句话）",
-      "url": "来源链接",
-      "impact": "对 SAP 用户/开发者的影响"
+      "summary": "detailed 3-5 sentence summary",
+      "url": "source URL",
+      "impact": "impact on SAP users/developers"
     }}
   ]
-}}
+}}"""
+        }],
+    )
 
-请现在开始执行。
-"""
+    text = next(b.text for b in synthesis.content if hasattr(b, "text"))
+    # 清理可能的 markdown 代码块
+    text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    return json.loads(text)
 
 
 def build_summary_email(data: dict, today: str) -> str:
-    """将 research.json 转为邮件正文 Markdown"""
     lines = [
         f"# 📬 AI 研究日报 —— {today}\n\n",
-        "> **请直接回复此邮件**，告诉我你想深入了解哪部分，我将根据你的反馈生成完整学习计划。\n\n---\n\n",
-
+        "> **请直接回复此邮件**，告诉我你想深入了解哪部分，系统将自动生成完整学习计划。\n\n---\n\n",
         "## 📄 arxiv 最新论文\n\n",
     ]
     for i, p in enumerate(data.get("arxiv_papers", []), 1):
         lines.append(f"**{i}. [{p['title']}]({p['url']})**  \n")
-        lines.append(f"*{p.get('authors', '')}* | 类别：{p.get('category', '')}  \n")
+        lines.append(f"*{p.get('authors', '')}* | {p.get('category', '')}  \n")
         lines.append(f"{p['contribution']}\n\n")
 
     lines.append("---\n\n## 🏢 大厂 AI 动态\n\n")
     for t in data.get("big_tech", []):
-        lines.append(f"**{t['company']}**：[{t['title']}]({t['url']})  \n")
-        lines.append(f"{t['summary']}\n\n")
+        lines.append(f"**{t['company']}**：[{t['title']}]({t['url']})  \n{t['summary']}\n\n")
 
     lines.append("---\n\n## 🔷 SAP AI 专项\n\n")
     for s in data.get("sap_focus", []):
@@ -133,41 +142,27 @@ def build_summary_email(data: dict, today: str) -> str:
         if s.get("impact"):
             lines.append(f"*影响：{s['impact']}*\n\n")
 
-    lines.append("\n---\n\n*直接回复此邮件填写反馈，系统将自动为你生成个性化学习计划。*\n")
+    lines.append("\n---\n\n*直接回复此邮件填写反馈，系统将自动生成个性化学习计划。*\n")
     return "".join(lines)
 
 
-async def run_research() -> None:
+def main() -> None:
     today = date.today().strftime("%Y年%m月%d日")
-
-    print(f"\n🔬  研究收集 Agent 启动  [{today}]")
+    print(f"\n🔬  研究收集启动  [{today}]")
     print("=" * 60)
 
-    async for message in query(prompt=build_research_prompt(today), options=AGENT_OPTIONS):
-        if isinstance(message, AssistantMessage):
-            for block in message.content:
-                if isinstance(block, TextBlock) and block.text:
-                    print(block.text, end="", flush=True)
+    data = collect_research(today)
 
-    print("\n" + "=" * 60)
-    print("✅  研究收集完成！")
+    RESEARCH_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    print("\n✅  research.json 已保存")
 
-    if RESEARCH_FILE.exists():
-        data = json.loads(RESEARCH_FILE.read_text(encoding="utf-8"))
-        body = build_summary_email(data, today)
-        # 邮件主题含 [AI日报] 标记，wait_reply.py 通过此标记识别原始邮件
-        send_html_email(
-            subject=f"[AI-Daily] {today} Research Summary - Please Reply with Feedback",
-            markdown_content=body,
-            today=today,
-        )
-        print("\n⏳  等待你的邮件回复，运行 python wait_reply.py 开始监听…")
-    else:
-        print("⚠️  research.json 未生成，请检查 Agent 输出。")
-
-
-def main() -> None:
-    asyncio.run(run_research())
+    body = build_summary_email(data, today)
+    send_html_email(
+        subject=f"[AI-Daily] {today} Research Summary - Please Reply with Feedback",
+        markdown_content=body,
+        today=today,
+    )
+    print("⏳  等待你的邮件回复，运行 python wait_reply.py 开始监听…")
 
 
 if __name__ == "__main__":
