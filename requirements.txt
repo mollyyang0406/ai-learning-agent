@@ -1,0 +1,6 @@
+anthropic
+markdown
+python-dotenv
+tzdata
+requests
+tavily-python

@@ -1,0 +1,59 @@
+name: AI Daily Learning Plan
+
+on:
+  schedule:
+    - cron: '0 13 * * *'   # 美东 08:00 — research.py
+    - cron: '0 17 * * *'   # 美东 12:00 — wait_reply.py
+  workflow_dispatch:        # 手动触发（测试用）
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run research.py (08:00 ET)
+        if: github.event.schedule == '0 13 * * *' || github.event_name == 'workflow_dispatch'
+        env:
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          SENDER_APP_PASSWORD: ${{ secrets.SENDER_APP_PASSWORD }}
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: "465"
+          IMAP_HOST: imap.gmail.com
+          IMAP_PORT: "993"
+          SAP_CLIENT_ID: ${{ secrets.SAP_CLIENT_ID }}
+          SAP_CLIENT_SECRET: ${{ secrets.SAP_CLIENT_SECRET }}
+          SAP_AUTH_URL: ${{ secrets.SAP_AUTH_URL }}
+          SAP_AI_API_URL: ${{ secrets.SAP_AI_API_URL }}
+          SAP_DEPLOYMENT_ID: ${{ secrets.SAP_DEPLOYMENT_ID }}
+          SAP_RESOURCE_GROUP: ${{ secrets.SAP_RESOURCE_GROUP }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+        run: python research.py
+
+      - name: Run wait_reply.py (12:00 ET)
+        if: github.event.schedule == '0 17 * * *'
+        env:
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
+          SENDER_APP_PASSWORD: ${{ secrets.SENDER_APP_PASSWORD }}
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: "465"
+          IMAP_HOST: imap.gmail.com
+          IMAP_PORT: "993"
+          SAP_CLIENT_ID: ${{ secrets.SAP_CLIENT_ID }}
+          SAP_CLIENT_SECRET: ${{ secrets.SAP_CLIENT_SECRET }}
+          SAP_AUTH_URL: ${{ secrets.SAP_AUTH_URL }}
+          SAP_AI_API_URL: ${{ secrets.SAP_AI_API_URL }}
+          SAP_DEPLOYMENT_ID: ${{ secrets.SAP_DEPLOYMENT_ID }}
+          SAP_RESOURCE_GROUP: ${{ secrets.SAP_RESOURCE_GROUP }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+        run: python wait_reply.py
