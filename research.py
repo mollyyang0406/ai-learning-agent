@@ -26,11 +26,13 @@ tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 
 
 def search(query: str) -> str:
-    """用 Tavily 执行搜索，返回结果文本"""
-    result = tavily.search(query=query, search_depth="advanced", max_results=5)
+    """用 Tavily 执行搜索，只返回最近 2 天的内容"""
+    result = tavily.search(query=query, search_depth="advanced", max_results=5, days=2)
     texts = []
     for r in result.get("results", []):
-        texts.append(f"**{r.get('title', '')}** ({r.get('url', '')})\n{r.get('content', '')}")
+        published = r.get("published_date", "")
+        date_tag = f" [{published}]" if published else ""
+        texts.append(f"**{r.get('title', '')}**{date_tag} ({r.get('url', '')})\n{r.get('content', '')}")
     return "\n\n".join(texts)
 
 
