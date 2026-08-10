@@ -25,9 +25,12 @@ client = get_client()
 tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
 
 
-def search(query: str) -> str:
-    """用 Tavily 执行搜索，只返回最近 2 天的内容"""
-    result = tavily.search(query=query, search_depth="advanced", max_results=5, days=2)
+def search(query: str, domains: list = None) -> str:
+    """用 Tavily 执行搜索，只返回最近 24 小时的内容"""
+    kwargs = {"search_depth": "advanced", "max_results": 5, "days": 1}
+    if domains:
+        kwargs["include_domains"] = domains
+    result = tavily.search(query=query, **kwargs)
     texts = []
     for r in result.get("results", []):
         published = r.get("published_date", "")
@@ -60,6 +63,14 @@ def collect_research(today: str) -> dict:
         f"For each item give: title, type (product/research/partnership), detailed summary, URL, impact on SAP users."
     )
 
+    print("💬  搜索 SAP Community AI 内容…")
+    community_raw = search(
+        f"Latest AI related posts and articles on SAP Community published today. "
+        f"Topics: SAP Joule, SAP AI Core, SAP BTP AI, generative AI, LLM, RAG, AI agents on SAP platform. "
+        f"For each post give: title, author, summary, URL.",
+        domains=["community.sap.com"]
+    )
+
     print("🧠  整合研究结果…")
     synthesis = client.messages.create(
         model="claude-sonnet-4-5",
@@ -76,6 +87,9 @@ def collect_research(today: str) -> dict:
 
 === SAP AI news ===
 {sap_raw}
+
+=== SAP Community posts ===
+{community_raw}
 
 Return ONLY valid JSON in this exact format (no markdown, no explanation):
 {{
@@ -104,6 +118,14 @@ Return ONLY valid JSON in this exact format (no markdown, no explanation):
       "summary": "detailed 3-5 sentence summary",
       "url": "source URL",
       "impact": "impact on SAP users/developers"
+    }}
+  ],
+  "sap_community": [
+    {{
+      "title": "post title",
+      "author": "author name",
+      "summary": "2-3 sentence summary",
+      "url": "community.sap.com URL"
     }}
   ]
 }}"""
@@ -136,6 +158,13 @@ def build_summary_email(data: dict, today: str) -> str:
         lines.append(f"{s['summary']}  \n")
         if s.get("impact"):
             lines.append(f"*影响：{s['impact']}*\n\n")
+
+    lines.append("---\n\n## 💬 SAP Community 热帖\n\n")
+    for c in data.get("sap_community", []):
+        lines.append(f"**[{c['title']}]({c['url']})**")
+        if c.get("author"):
+            lines.append(f" — *{c['author']}*")
+        lines.append(f"  \n{c['summary']}\n\n")
 
     lines.append("\n---\n\n*直接回复此邮件填写反馈，系统将自动生成个性化学习计划。*\n")
     return "".join(lines)
