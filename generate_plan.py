@@ -9,7 +9,6 @@ import sys
 from datetime import date
 from pathlib import Path
 
-import anthropic
 from dotenv import load_dotenv
 from send_email import send_html_email
 from sap_client import get_client
@@ -66,7 +65,6 @@ def generate_plan(feedback: str) -> None:
 
 请直接输出 Markdown，不要加额外说明。"""
 
-    # 流式输出
     plan_text = ""
     with client.messages.stream(
         model="claude-sonnet-4-5",

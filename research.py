@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Step 1 - 研究收集
-使用 Anthropic SDK + web_search 工具搜索：
+使用 Tavily 搜索 + SAP AI Core 整合：
 - arxiv 最新 AI 论文
 - 大厂 AI 动态
 - SAP AI 最新研究和产品
@@ -59,7 +59,6 @@ def collect_research(today: str) -> dict:
     )
 
     print("🧠  整合研究结果…")
-    # 让模型把三段原始文本整合成结构化 JSON
     synthesis = client.messages.create(
         model="claude-sonnet-4-5",
         max_tokens=4096,
@@ -110,7 +109,6 @@ Return ONLY valid JSON in this exact format (no markdown, no explanation):
     )
 
     text = next(b.text for b in synthesis.content if hasattr(b, "text"))
-    # 清理可能的 markdown 代码块
     text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     return json.loads(text)
 
