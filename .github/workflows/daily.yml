@@ -2,8 +2,10 @@ name: AI Daily Learning Plan
 
 on:
   schedule:
-    - cron: '0 13 * * *'   # 美东 08:00 — research.py
-    - cron: '0 17 * * *'   # 美东 12:00 — wait_reply.py
+    - cron: '0 12 * * *'   # EDT 08:00 (UTC-4, 夏令时 3月-11月)
+    - cron: '0 13 * * *'   # EST 08:00 (UTC-5, 冬令时 11月-3月)
+    - cron: '0 16 * * *'   # EDT 12:00 (UTC-4, 夏令时)
+    - cron: '0 17 * * *'   # EST 12:00 (UTC-5, 冬令时)
   workflow_dispatch:        # 手动触发（测试用）
 
 jobs:
@@ -22,8 +24,25 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Check if correct local time (skip duplicate DST trigger)
+        id: timecheck
+        run: |
+          # Get current UTC hour
+          UTC_HOUR=$(date -u +%H)
+          # Get current month (for DST approximation: EDT = March(3) to November(11))
+          MONTH=$(date -u +%m | sed 's/^0//')
+          if [ "$MONTH" -ge 3 ] && [ "$MONTH" -le 11 ]; then
+            OFFSET=4  # EDT UTC-4
+          else
+            OFFSET=5  # EST UTC-5
+          fi
+          LOCAL_HOUR=$(( (UTC_HOUR - OFFSET + 24) % 24 ))
+          echo "utc_hour=$UTC_HOUR" >> $GITHUB_OUTPUT
+          echo "local_hour=$LOCAL_HOUR" >> $GITHUB_OUTPUT
+          echo "Current UTC=$UTC_HOUR, Local ET=$LOCAL_HOUR"
+
       - name: Run research.py (08:00 ET)
-        if: github.event.schedule == '0 13 * * *' || github.event_name == 'workflow_dispatch'
+        if: steps.timecheck.outputs.local_hour == '8' || github.event_name == 'workflow_dispatch'
         env:
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           SENDER_APP_PASSWORD: ${{ secrets.SENDER_APP_PASSWORD }}
@@ -41,7 +60,7 @@ jobs:
         run: python research.py
 
       - name: Run wait_reply.py (12:00 ET)
-        if: github.event.schedule == '0 17 * * *'
+        if: steps.timecheck.outputs.local_hour == '12'
         env:
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
           SENDER_APP_PASSWORD: ${{ secrets.SENDER_APP_PASSWORD }}
